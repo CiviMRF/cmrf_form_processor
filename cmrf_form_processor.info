@@ -1,5 +1,5 @@
 name = CiviMRF Form Processor Webform integration
-description = CiviMRF form processor webform integrates the CiviCRM form processor extension as webform end point. Allows to submit a webform to the CiviCRM api. Requires the form processor extension being installed in CiviCRM. 
+description = Submit webforms with CiviMRF to CiviCRM Form Processor (https://lab.civicrm.org/extensions/form-procesor)  
 core = 7.x
 
 package = "CiviMRF"
