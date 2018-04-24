@@ -1,0 +1,60 @@
+<?php
+
+require_once('cmrf_form_processor.cmrf.inc');
+
+function cmrf_form_processor_disable() {
+  variable_del(cmrf_form_processor_get_connector_name());
+  if (function_exists('cmrf_core_list_profiles')) {
+    $profiles = cmrf_core_list_profiles();
+    foreach ($profiles as $profile_name => $profile) {
+      variable_del(cmrf_form_processor_get_connector_name($profile_name));
+    }
+  }
+}
+
+/**
+ * Implements hook_schema().
+ */
+function cmrf_form_processor_schema() {
+  return array(
+    'cmrf_form_processor_webforms' => array(
+      'description' => 'CiviMRF Form Processor settings for webforms.',
+      'fields' => array(
+        'nid' => array(
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+          'default' => 0,
+          'description' => 'Webform Node ID',
+        ),
+        'cmrf_form_processor_enable' => array(
+          'type' => 'int',
+          'size' => 'tiny',
+          'not null' => TRUE,
+          'default' => 0,
+          'description' => 'Enabled CiviMRF Form Processor for this webform',
+        ),
+        'cmrf_form_processor_queue' => array(
+          'type' => 'int',
+          'size' => 'tiny',
+          'not null' => TRUE,
+          'default' => 0,
+          'description' => 'Submit in background',
+        ),
+        'cmrf_form_processor_profile' => array(
+          'description' => 'The profile',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+        ),
+        'cmrf_form_processor_processor' => array(
+          'description' => 'The form processor',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+        ),
+      ),
+      'primary key' => array('nid'),
+    ),
+  );
+}

@@ -1,0 +1,258 @@
+<?php
+
+require_once('cmrf_form_processor.cmrf.inc');
+
+function cmrf_form_processor_webform_submission_insert($node, $submission) {
+  // Do not pass draft webforms.
+  if ($submission->is_draft) {
+    return;
+  }
+
+  // Only submit webforms when civimrf is enabled.
+  if (!$node->cmrf_form_processor_enable) {
+    return;
+  }
+
+  $profile = !empty($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : null;
+
+  // Build the parameters for the call
+  $params = array();
+  $data = $submission->data;
+  $webform = $node->webform;
+  foreach($webform['components'] as $index => $component) {
+    if (isset($data[$index])) {
+      $value = $data[$index];
+      if (is_array($value) && empty($component['extra']['multiple'])) {
+        $value = reset($value);
+      }
+      $params[$component['form_key']] = $value;
+    }
+  }
+
+  $options = array();
+
+  if ($node->cmrf_form_processor_queue) {
+    cmrf_webform_queue_call('FormProcessor', $node->cmrf_form_processor_processor, $params, $options, $profile);
+  } else {
+    cmrf_webform_send_call('FormProcessor', $node->cmrf_form_processor_processor, $params, $options, $profile);
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function cmrf_form_processor_form_webform_components_form_alter(&$form, &$form_state) {
+  $node = $form['#node'];
+  if (isset($node->cmrf_form_processor_enable) && $node->cmrf_form_processor_enable) {
+    $profiles = cmrf_core_list_profiles();
+    $profile = t('Default');
+    if (!empty($node->cmrf_form_processor_profile) && isset($profiles[$node->cmrf_form_processor_profile])) {
+      $profile = $profiles[$node->cmrf_form_processor_profile]['label'];
+    }
+    $form_processor = $node->cmrf_form_processor_processor;
+    $form['warning']['civimrf_form_processor'] = array(
+      '#markup' => '
+          <p class="civimrf_form_processor-description">
+            <span class="civimrf_form_processor-icon enable"></span>' . 
+            t('CiviMRF Form Processor is enabled and this webform will be submitted to CiviCRM with the %profile profile to %form_processor', array('%profile' => $profile, '%form_processor' => $form_processor)) . 
+          '</p>',
+      '#weight' => -1000,
+    );
+    
+    // Get the fields
+    $fields = cmrf_form_processor_get_fields($form_processor, $node->cmrf_form_processor_profile);
+    foreach($node->webform['components'] as $comp) {
+      if (isset($fields[$comp['form_key']])) {
+        unset($fields[$comp['form_key']]);
+      }
+    }
+    $missing_fields = array_keys($fields);
+    if (count($missing_fields)) {
+      drupal_set_message(t('The field(s) %fields are missing from the form', array('%fields' => implode(", ", $missing_fields))), 'error');
+    }
+    
+    $form['#attached']['css'] = array(
+      drupal_get_path('module', 'cmrf_form_processor') . '/css/cmrf_form_processor.css',
+    );
+  }
+  return $form;
+}
+
+function cmrf_form_processor_form_cmrf_webform_settings_alter(&$form, &$form_state) {
+  $profiles = cmrf_core_list_profiles();
+  $profiles_options = array('' => t(' - Default profile -'));
+  foreach($profiles as $profile_name => $profile) {
+    $profiles_options[$profile_name] = $profile['label'];
+  }
+  
+  $node = $form['#node'];
+  $enabled = isset($node->cmrf_form_processor_enable) && $node->cmrf_form_processor_enable ? TRUE : FALSE;
+  $queue = isset($node->cmrf_form_processor_queue) && $node->cmrf_form_processor_queue ? TRUE : FALSE;
+  $profile = isset($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : '';
+  $processor = isset($node->cmrf_form_processor_processor) ? $node->cmrf_form_processor_processor : '';
+  
+  $submitted_profile = !empty($form_state['values']['cmrf_form_processor_profile']) ? $form_state['values']['cmrf_form_processor_profile'] : $profile;
+  $processors = cmrf_form_processor_get_processor_list($submitted_profile);
+  
+  $form['cmrf_webform']['cmrf_enable']['#options']['cmrf_form_processor'] = t('Submit to CiviCRM Form Processor');
+  if ($enabled && empty($form['cmrf_webform']['cmrf_enable']['#default_value'])) {
+    $form['cmrf_webform']['cmrf_enable']['#default_value'] = 'cmrf_form_processor';
+  }  
+
+  $form['cmrf_form_processor']['cmrf_form_processor_queue'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Handle the submission in the background'),
+    '#description' => t('Submit this webform in the background. This means that the user does not have to wait till the submission is processed. You have to enable the cron to get this working.'),
+    '#default_value' => $queue,
+    '#states' => array(
+      'visible' => array(
+        'select[name="cmrf_enable"]' => array('value' => 'cmrf_form_processor'),
+      ),
+    ),
+  );
+  $form['cmrf_form_processor']['cmrf_form_processor_profile'] = array(
+    '#type' => 'select',
+    '#title' => t('CiviMRF Connection profile'),
+    '#options' => $profiles_options,
+    '#default_value' => $profile,
+    '#states' => array(
+      'visible' => array(
+        'select[name="cmrf_enable"]' => array('value' => 'cmrf_form_processor'),
+      ),
+    ),
+    '#ajax' => array(
+      'callback' => 'cmrf_form_processor_settings_processor_options',
+      'wrapper' => 'wrapper-cmrf_form_processor_processor',
+      'method' => 'replace',
+      'effect' => 'fade',
+    ),
+  );
+  $form['cmrf_form_processor']['cmrf_form_processor_processor'] = array(
+    '#type' => 'select',
+    '#title' => t('Form Processor'),
+    '#description' => t('CiviMRF Form Processor works with submitting data to the CiviCRM Form Processor API. This field specifies which form processor to use.'),
+    '#default_value' => $processor,
+    '#options' => $processors,
+    '#states' => array(
+      'visible' => array(
+        'select[name="cmrf_enable"]' => array('value' => 'cmrf_form_processor'),
+      ),
+      'required' => array(
+        'select[name="cmrf_enable"]' => array('value' => 'cmrf_form_processor'),
+      ),
+    ),
+    '#prefix' => '<div id="wrapper-cmrf_form_processor_processor">',
+    '#suffix' => '</div>',
+  );
+
+  $form['actions']['#type'] = 'actions';
+  $form['actions']['submit']['#type'] = 'submit';
+  $form['actions']['submit']['#value'] = t('Save');
+
+  $form['#validate'][] = 'cmrf_form_processor_settings_validate';
+  $form['#submit'][] = 'cmrf_form_processor_settings_submit';
+  return $form;
+}
+
+function cmrf_form_processor_settings_processor_options($form, $form_state) {
+  return $form['cmrf_webform']['cmrf_form_processor_processor'];
+}
+
+
+/**
+ * Validate the webform settings form.
+ *
+ * @param array $form
+ *    The form.
+ * @param array $form_state
+ *    The form state.
+ */
+function cmrf_form_processor_settings_validate(array &$form, array &$form_state) {
+  if ($form_state['values']['cmrf_enable'] == 'cmrf_form_processor') {
+    if (empty($form_state['values']['cmrf_form_processor_processor'])) {
+      form_set_error('cmrf_form_processor_processor', t('Form Processor is required.'));
+    }
+  }
+}
+
+/**
+ * Submit the webform settings form and store the civimrf settings.
+ *
+ * @param array $form
+ *    The form.
+ * @param array $form_state
+ *    The form state.
+ */
+function cmrf_form_processor_settings_submit(array &$form, array &$form_state) {
+  $node = &$form['#node'];
+  $node->cmrf_form_processor_enable = $form_state['values']['cmrf_enable'] == 'cmrf_form_processor' ? TRUE : FALSE;  
+  $node->cmrf_form_processor_queue = $form_state['values']['cmrf_form_processor_queue'] ? TRUE : FALSE;
+  $node->cmrf_form_processor_profile = $form_state['values']['cmrf_form_processor_profile'] ? $form_state['values']['cmrf_form_processor_profile'] : '';
+  $node->cmrf_form_processor_processor = $form_state['values']['cmrf_form_processor_processor'] ? $form_state['values']['cmrf_form_processor_processor'] : '';
+  node_save($node);
+
+  if ($form_state['values']['cmrf_enable'] == 'cmrf_form_processor') {
+    drupal_set_message(t('Webform %name CiviMRF Form Processor enabled.', array('%name' => $node->title)));
+  }
+}
+
+
+/**
+ * Deferred hook_node_load for webforms.
+ *
+ * @param array $nodes
+ *    Array of nodes.
+ * @param array $types
+ *    Array of types.
+ */
+function cmrf_form_processor_node_load($nodes, $types) {
+  $db = db_query('SELECT * FROM {cmrf_form_processor_webforms} WHERE nid IN(:nids)', array(':nids' => array_keys($nodes)));
+  foreach ($db as $cmrf_webform) {
+    $node = &$nodes[$cmrf_webform->nid];
+    $node->cmrf_form_processor_enable = $cmrf_webform->cmrf_form_processor_enable ? TRUE : FALSE;
+    $node->cmrf_form_processor_queue = $cmrf_webform->cmrf_form_processor_queue ? TRUE : FALSE;
+    $node->cmrf_form_processor_profile = $cmrf_webform->cmrf_form_processor_profile ? $cmrf_webform->cmrf_form_processor_profile : '';
+    $node->cmrf_form_processor_processor = $cmrf_webform->cmrf_form_processor_processor ? $cmrf_webform->cmrf_form_processor_processor : '';
+  }
+}
+
+/**
+ * Implements hook_node_insert().
+ */
+function cmrf_form_processor_node_insert($node) {
+  db_insert('cmrf_form_processor_webforms')
+    ->fields(array(
+      'nid' => $node->nid,
+      'cmrf_form_processor_enable' => !empty($node->cmrf_form_processor_enable) ? 1 : 0,
+      'cmrf_form_processor_queue' => !empty($node->cmrf_form_processor_queue) ? 1 : 0,
+      'cmrf_form_processor_profile' => !empty($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : '',
+      'cmrf_form_processor_processor' => !empty($node->cmrf_form_processor_processor) ? $node->cmrf_form_processor_processor : '',
+    ))
+    ->execute();
+}
+
+/**
+ * Implements hook_node_update().
+ */
+function cmrf_form_processor_node_update($node) {
+  db_merge('cmrf_form_processor_webforms')
+    ->key(array(
+      'nid' => $node->nid,
+    ))
+    ->fields(array(
+      'cmrf_form_processor_enable' => !empty($node->cmrf_form_processor_enable) ? 1 : 0,
+      'cmrf_form_processor_queue' => !empty($node->cmrf_form_processor_queue) ? 1 : 0,
+      'cmrf_form_processor_profile' => !empty($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : '',
+      'cmrf_form_processor_processor' => !empty($node->cmrf_form_processor_processor) ? $node->cmrf_form_processor_processor : '',
+    ))
+    ->execute();
+}
+
+/**
+ * Implements hook_node_delete().
+ */
+function cmrf_form_processor_node_delete($node) {
+  db_delete('cmrf_form_processor_webforms')
+    ->condition('nid', $node->nid)
+    ->execute();
+}
