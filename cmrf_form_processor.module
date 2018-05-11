@@ -2,6 +2,40 @@
 
 require_once('cmrf_form_processor.cmrf.inc');
 
+function cmrf_form_processor_form_alter(&$form, &$form_state, $form_id) {
+  if (stripos($form_id, 'webform_client_form_')!==0) {
+    // Is not a webform;
+    return;
+  }
+  $node = $form['#node'];
+  if (!$node->cmrf_form_processor_enable) {
+    return;
+  }
+  if (!$node->cmrf_form_processor_default_data_enable) {
+    return;
+  } 
+  
+  $profile = !empty($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : null;
+  $cache = $node->cmrf_form_processor_default_data_cache;
+  $defaultDataParams = array();
+  foreach($node->cmrf_form_processor_default_data as $key => $value) {
+    if (!empty($value)) {
+      $defaultDataParams[$key] = token_replace($value);
+    }
+  } 
+  $defaultData = cmrf_form_processor_get_default_data($node->cmrf_form_processor_processor, $defaultDataParams, $cache, $profile);
+  foreach($node->webform['components'] as $cid => $component) {
+    if (isset($defaultData[$component['form_key']])) {
+      $node->webform['components'][$cid]['value'] = $defaultData[$component['form_key']];
+    }
+  }
+  foreach($defaultData as $field => $value) {
+    if (isset($form['submitted'][$field])) {
+      $form['submitted'][$field]['#default_value'] = $value;
+    }
+  }
+} 
+
 function cmrf_form_processor_webform_submission_insert($node, $submission) {
   // Do not pass draft webforms.
   if ($submission->is_draft) {
@@ -90,9 +124,13 @@ function cmrf_form_processor_form_cmrf_webform_settings_alter(&$form, &$form_sta
   $queue = isset($node->cmrf_form_processor_queue) && $node->cmrf_form_processor_queue ? TRUE : FALSE;
   $profile = isset($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : '';
   $processor = isset($node->cmrf_form_processor_processor) ? $node->cmrf_form_processor_processor : '';
+  $defaultData = isset($node->cmrf_form_processor_default_data) ? $node->cmrf_form_processor_default_data : array();
+  $defaultDataEnabled = isset($node->cmrf_form_processor_default_data_enable) && $node->cmrf_form_processor_default_data_enable ? TRUE : FALSE;
+  $defaultDataCache = isset($node->cmrf_form_processor_default_data_cache) ? $node->cmrf_form_processor_default_data_cache : '3 minutes';
   
   $submitted_profile = !empty($form_state['values']['cmrf_form_processor_profile']) ? $form_state['values']['cmrf_form_processor_profile'] : $profile;
   $processors = cmrf_form_processor_get_processor_list($submitted_profile);
+  $submitted_processor = !empty($form_state['values']['cmrf_form_processor_processor']) ? $form_state['values']['cmrf_form_processor_processor'] : $processor;
   
   $form['cmrf_webform']['cmrf_enable']['#options']['cmrf_form_processor'] = t('Submit to CiviCRM Form Processor');
   if ($enabled && empty($form['cmrf_webform']['cmrf_enable']['#default_value'])) {
@@ -143,6 +181,87 @@ function cmrf_form_processor_form_cmrf_webform_settings_alter(&$form, &$form_sta
     ),
     '#prefix' => '<div id="wrapper-cmrf_form_processor_processor">',
     '#suffix' => '</div>',
+    '#ajax' => array(
+      'callback' => 'cmrf_form_processor_settings_processor_default',
+      'wrapper' => 'wrapper-cmrf_form_processor_default',
+      'method' => 'replace',
+      'effect' => 'fade',
+    ),
+  );
+  $form['cmrf_form_processor_default'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Prefil the form with existing data'),
+    '#states' => array(
+      'visible' => array(
+        'select[name="cmrf_enable"]' => array('value' => 'cmrf_form_processor'),
+      ),
+    ),
+  );
+  $form['cmrf_form_processor_default']['cmrf_form_processor_default_data_enable'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Prefil the form with existing data'),
+    '#default_value' => $defaultDataEnabled,
+  );
+  $form['cmrf_form_processor_default']['cmrf_form_processor_default_data'] = array(
+    '#tree' => TRUE,
+    '#prefix' => '<div id="wrapper-cmrf_form_processor_default">',
+    '#suffix' => '</div>',
+    '#type' => 'container',
+    '#theme' => 'table',
+    '#header' => array(t('Field'), t('Value')),
+    '#rows' => array(),
+    '#states' => array(
+      'visible' => array(
+        'input[name="cmrf_form_processor_default_data_enable"]' => array('checked' => true),
+      ),
+    ),
+  );
+  if (!empty($submitted_processor)) {
+    $defaultFields = cmrf_form_processor_get_default_fields($submitted_processor, $submitted_profile);
+    $i=0;
+    foreach($defaultFields as $field) {
+      $required = '';
+      $defaultFieldName = array(
+        '#id' => 'default_field_name_'.$i,
+        '#type' => 'hidden',
+        '#default_value' => $field['name'],
+        '#prefix' => $field['title'],
+        '#suffix' => $field['api.required'] ? '<span class="form-required">*</span>' : '', 
+      );
+      $defaultFieldData = array(
+        '#id' => 'default_field_data_'.$i,
+        '#default_value' => isset($defaultData[$field['name']]) ? $defaultData[$field['name']] : '',
+        '#type' => 'textfield',
+        '#required' => true, //$field['api.required'],
+        '#description' => theme('webform_token_help'),
+      );
+      
+      $form['cmrf_form_processor_default']['cmrf_form_processor_default_data'][$i] = array(
+        'default_field_name' => &$defaultFieldName,
+        'default_field_data' => &$defaultFieldData,
+      );
+      $form['cmrf_form_processor_default']['cmrf_form_processor_default_data']['#rows'][] = array(
+        array('data' => &$defaultFieldName),
+        array('data' => &$defaultFieldData),
+      );
+      
+      unset($defaultFieldName);
+      unset($defaultFieldData);
+      
+      $i++;
+    }
+  }
+
+  $form['cmrf_form_processor_default']['cmrf_form_processor_default_data_cache'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Cache time for retrieved default values'),
+    '#description' => t('Leave empty to disable the cache. Or enter a value in the format as 1 minute, 30 minutes, 2 seconds, etc.'),
+    '#default_value' => $defaultDataCache,
+    '#states' => array(
+      'visible' => array(
+        'input[name="cmrf_form_processor_default_data_enable"]' => array('checked' => true),
+      ),
+    ),
   );
 
   $form['actions']['#type'] = 'actions';
@@ -158,6 +277,10 @@ function cmrf_form_processor_settings_processor_options($form, $form_state) {
   return $form['cmrf_webform']['cmrf_form_processor_processor'];
 }
 
+function cmrf_form_processor_settings_processor_default($form, $form_state) {
+  return $form['cmrf_webform']['cmrf_form_processor_default'];
+}
+
 
 /**
  * Validate the webform settings form.
@@ -171,6 +294,15 @@ function cmrf_form_processor_settings_validate(array &$form, array &$form_state)
   if ($form_state['values']['cmrf_enable'] == 'cmrf_form_processor') {
     if (empty($form_state['values']['cmrf_form_processor_processor'])) {
       form_set_error('cmrf_form_processor_processor', t('Form Processor is required.'));
+    } else {
+      $submitted_profile = $form_state['values']['cmrf_form_processor_profile'];
+      $submitted_processor = $form_state['values']['cmrf_form_processor_processor'];      
+      $defaultFields = cmrf_form_processor_get_default_fields($submitted_processor, $submitted_profile);
+      foreach($form_state['input']['cmrf_form_processor_default_data'] as $default_data) {
+        if (empty($default_data['default_field_data']) && !empty($defaultFields[$default_data['default_field_name']]['api.required'])) {
+          form_set_error('cmrf_form_processor_default_data', t('Not all required parameters are set'));
+        }
+      }
     }
   }
 }
@@ -189,6 +321,14 @@ function cmrf_form_processor_settings_submit(array &$form, array &$form_state) {
   $node->cmrf_form_processor_queue = $form_state['values']['cmrf_form_processor_queue'] ? TRUE : FALSE;
   $node->cmrf_form_processor_profile = $form_state['values']['cmrf_form_processor_profile'] ? $form_state['values']['cmrf_form_processor_profile'] : '';
   $node->cmrf_form_processor_processor = $form_state['values']['cmrf_form_processor_processor'] ? $form_state['values']['cmrf_form_processor_processor'] : '';
+  $node->cmrf_form_processor_default_data_cache = isset($form_state['values']['cmrf_form_processor_default_data_cache']) ? $form_state['values']['cmrf_form_processor_default_data_cache'] : '';
+  $node->cmrf_form_processor_default_data_enable = true;
+  
+  $node->cmrf_form_processor_default_data = array();
+  foreach($form_state['input']['cmrf_form_processor_default_data'] as $default_data) {
+    $node->cmrf_form_processor_default_data[$default_data['default_field_name']] = $default_data['default_field_data'];  
+  }
+  
   node_save($node);
 
   if ($form_state['values']['cmrf_enable'] == 'cmrf_form_processor') {
@@ -213,6 +353,9 @@ function cmrf_form_processor_node_load($nodes, $types) {
     $node->cmrf_form_processor_queue = $cmrf_webform->cmrf_form_processor_queue ? TRUE : FALSE;
     $node->cmrf_form_processor_profile = $cmrf_webform->cmrf_form_processor_profile ? $cmrf_webform->cmrf_form_processor_profile : '';
     $node->cmrf_form_processor_processor = $cmrf_webform->cmrf_form_processor_processor ? $cmrf_webform->cmrf_form_processor_processor : '';
+    $node->cmrf_form_processor_default_data_enable = $cmrf_webform->cmrf_form_processor_default_data_enable ? TRUE : FALSE;
+    $node->cmrf_form_processor_default_data_cache = $cmrf_webform->cmrf_form_processor_default_data_cache;
+    $node->cmrf_form_processor_default_data = !empty($cmrf_webform->cmrf_form_processor_default_data) ? json_decode($cmrf_webform->cmrf_form_processor_default_data, true) : array();
   }
 }
 
@@ -227,6 +370,9 @@ function cmrf_form_processor_node_insert($node) {
       'cmrf_form_processor_queue' => !empty($node->cmrf_form_processor_queue) ? 1 : 0,
       'cmrf_form_processor_profile' => !empty($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : '',
       'cmrf_form_processor_processor' => !empty($node->cmrf_form_processor_processor) ? $node->cmrf_form_processor_processor : '',
+      'cmrf_form_processor_default_data_enable' => !empty($node->cmrf_form_processor_default_data_enable) ? 1 : 0,
+      'cmrf_form_processor_default_data_cache' => $node->cmrf_form_processor_default_data_cache,
+      'cmrf_form_processor_default_data' => !empty($node->cmrf_form_processor_default_data) ? json_encode($node->cmrf_form_processor_default_data) : '',
     ))
     ->execute();
 }
@@ -244,6 +390,9 @@ function cmrf_form_processor_node_update($node) {
       'cmrf_form_processor_queue' => !empty($node->cmrf_form_processor_queue) ? 1 : 0,
       'cmrf_form_processor_profile' => !empty($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : '',
       'cmrf_form_processor_processor' => !empty($node->cmrf_form_processor_processor) ? $node->cmrf_form_processor_processor : '',
+      'cmrf_form_processor_default_data_enable' => !empty($node->cmrf_form_processor_default_data_enable) ? 1 : 0,
+      'cmrf_form_processor_default_data_cache' => $node->cmrf_form_processor_default_data_cache,
+      'cmrf_form_processor_default_data' => !empty($node->cmrf_form_processor_default_data) ? json_encode($node->cmrf_form_processor_default_data) : '',
     ))
     ->execute();
 }
