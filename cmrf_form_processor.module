@@ -298,9 +298,11 @@ function cmrf_form_processor_settings_validate(array &$form, array &$form_state)
       $submitted_profile = $form_state['values']['cmrf_form_processor_profile'];
       $submitted_processor = $form_state['values']['cmrf_form_processor_processor'];      
       $defaultFields = cmrf_form_processor_get_default_fields($submitted_processor, $submitted_profile);
-      foreach($form_state['input']['cmrf_form_processor_default_data'] as $default_data) {
-        if (empty($default_data['default_field_data']) && !empty($defaultFields[$default_data['default_field_name']]['api.required'])) {
-          form_set_error('cmrf_form_processor_default_data', t('Not all required parameters are set'));
+      if (isset($form_state['input']['cmrf_form_processor_default_data'])) {
+        foreach($form_state['input']['cmrf_form_processor_default_data'] as $default_data) {
+          if (empty($default_data['default_field_data']) && !empty($defaultFields[$default_data['default_field_name']]['api.required'])) {
+            form_set_error('cmrf_form_processor_default_data', t('Not all required parameters are set'));
+          }
         }
       }
     }
@@ -325,8 +327,10 @@ function cmrf_form_processor_settings_submit(array &$form, array &$form_state) {
   $node->cmrf_form_processor_default_data_enable = true;
   
   $node->cmrf_form_processor_default_data = array();
-  foreach($form_state['input']['cmrf_form_processor_default_data'] as $default_data) {
-    $node->cmrf_form_processor_default_data[$default_data['default_field_name']] = $default_data['default_field_data'];  
+  if (isset($form_state['input']['cmrf_form_processor_default_data'])) {
+    foreach($form_state['input']['cmrf_form_processor_default_data'] as $default_data) {
+      $node->cmrf_form_processor_default_data[$default_data['default_field_name']] = $default_data['default_field_data'];  
+    }
   }
   
   node_save($node);
