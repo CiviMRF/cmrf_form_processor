@@ -37,7 +37,7 @@ function cmrf_form_processor_form_alter(&$form, &$form_state, $form_id) {
  */
 function _cmrf_form_processor_form_alter_walk_submitted_tree(&$tree, $defaultData) {
   foreach($tree as $name => $field) {
-    if (isset($field['#default_value']) && isset($defaultData[$name])) {
+    if (is_array($field) && array_key_exists('#default_value', $field) && isset($defaultData[$name])) {
       $tree[$name]['#default_value'] = $defaultData[$name];
     }
     if (is_array($field)) {
