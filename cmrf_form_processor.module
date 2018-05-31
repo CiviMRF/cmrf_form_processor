@@ -29,12 +29,22 @@ function cmrf_form_processor_form_alter(&$form, &$form_state, $form_id) {
       $node->webform['components'][$cid]['value'] = $defaultData[$component['form_key']];
     }
   }
-  foreach($defaultData as $field => $value) {
-    if (isset($form['submitted'][$field])) {
-      $form['submitted'][$field]['#default_value'] = $value;
+  _cmrf_form_processor_form_alter_walk_submitted_tree($form['submitted'], $defaultData);
+} 
+
+/**
+ * Recursive function to prefill the default data onto the webform.
+ */
+function _cmrf_form_processor_form_alter_walk_submitted_tree(&$tree, $defaultData) {
+  foreach($tree as $name => $field) {
+    if (isset($field['#default_value']) && isset($defaultData[$name])) {
+      $tree[$name]['#default_value'] = $defaultData[$name];
+    }
+    if (is_array($field)) {
+      _cmrf_form_processor_form_alter_walk_submitted_tree($tree[$name], $defaultData);
     }
   }
-} 
+}
 
 function cmrf_form_processor_webform_submission_insert($node, $submission) {
   // Do not pass draft webforms.
