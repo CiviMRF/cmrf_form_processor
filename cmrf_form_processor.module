@@ -337,7 +337,7 @@ function cmrf_form_processor_form_cmrf_webform_settings_alter(&$form, &$form_sta
         '#id' => 'default_field_data_'.$i,
         '#default_value' => isset($defaultData[$field['name']]) ? $defaultData[$field['name']] : '',
         '#type' => 'textfield',
-        '#required' => true, //$field['api.required'],
+        '#required' => false, //$field['api.required'],
         '#description' => theme('webform_token_help'),
       );
       
@@ -403,7 +403,7 @@ function cmrf_form_processor_settings_validate(array &$form, array &$form_state)
       $submitted_profile = $form_state['values']['cmrf_form_processor_profile'];
       $submitted_processor = $form_state['values']['cmrf_form_processor_processor'];      
       $defaultFields = cmrf_form_processor_get_default_fields($submitted_processor, $submitted_profile);
-      if (isset($form_state['input']['cmrf_form_processor_default_data'])) {
+      if (isset($form_state['values']['cmrf_form_processor_default_data_enable']) && $form_state['values']['cmrf_form_processor_default_data_enable']) {
         foreach($form_state['input']['cmrf_form_processor_default_data'] as $default_data) {
           if (empty($default_data['default_field_data']) && !empty($defaultFields[$default_data['default_field_name']]['api.required'])) {
             form_set_error('cmrf_form_processor_default_data', t('Not all required parameters are set'));
@@ -429,7 +429,7 @@ function cmrf_form_processor_settings_submit(array &$form, array &$form_state) {
   $node->cmrf_form_processor_profile = $form_state['values']['cmrf_form_processor_profile'] ? $form_state['values']['cmrf_form_processor_profile'] : '';
   $node->cmrf_form_processor_processor = $form_state['values']['cmrf_form_processor_processor'] ? $form_state['values']['cmrf_form_processor_processor'] : '';
   $node->cmrf_form_processor_default_data_cache = isset($form_state['values']['cmrf_form_processor_default_data_cache']) ? $form_state['values']['cmrf_form_processor_default_data_cache'] : '';
-  $node->cmrf_form_processor_default_data_enable = true;
+  $node->cmrf_form_processor_default_data_enable = isset($form_state['values']['cmrf_form_processor_default_data_enable']) && $form_state['values']['cmrf_form_processor_default_data_enable'] ? true : false;
   
   $node->cmrf_form_processor_default_data = array();
   if (isset($form_state['input']['cmrf_form_processor_default_data'])) {
