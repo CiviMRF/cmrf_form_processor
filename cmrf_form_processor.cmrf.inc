@@ -45,10 +45,16 @@ function cmrf_form_processor_get_processor_list($profile=null) {
   return $processors;
 }
 
-function cmrf_form_processor_get_fields($form_processor, $profile=null) {
-  $fields = array();  
-  $parameters = array('api_action' => $form_processor);
-  $options['cache'] = '180 minutes';
+function cmrf_form_processor_get_fields($form_processor, $profile=null, $additional_params=array()) {
+  $fields = array();
+  if (!is_array($additional_params)) {
+    $additional_params = array();
+  }
+  $parameters = $additional_params + array('api_action' => $form_processor);
+  $options = array();
+  if (empty($additional_params)) {
+    $options['cache'] = '180 minutes';
+  }
   $call = cmrf_form_processor_send_call('FormProcessor', 'getfields', $parameters, $options, $profile);
   $result = $call->getReply();
   foreach($result['values'] as $name => $field) {

@@ -100,6 +100,7 @@ function cmrf_form_processor_form_webform_component_edit_form_alter(&$form, &$fo
   
   $enabled = false;
   $option_field = null;
+  $option_field_params = null;
   $cid = $form['cid']['#value'];
   if ($cid) {
     $component = isset($node->webform['components'][$cid]) ? $node->webform['components'][$cid] : FALSE;
@@ -107,6 +108,9 @@ function cmrf_form_processor_form_webform_component_edit_form_alter(&$form, &$fo
       $enabled = isset($component['extra']['cmrf_form_processor_options_enabled']) && $component['extra']['cmrf_form_processor_options_enabled'] ? true : false;
       if ($enabled && isset($component['extra']['cmrf_form_processor_options'])) {
         $option_field = $component['extra']['cmrf_form_processor_options'];
+      }
+      if ($enabled && isset($component['extra']['cmrf_form_processor_options_params'])) {
+        $option_field_params = $component['extra']['cmrf_form_processor_options_params'];
       }
     }
   }
@@ -132,6 +136,17 @@ function cmrf_form_processor_form_webform_component_edit_form_alter(&$form, &$fo
     '#title' => t('Options from the CiviMRF form processor'),
     '#options' => $fields_with_options,
     '#default_value' => $option_field,
+    '#states' => array(
+      'visible' => array(
+        'input[name="extra[cmrf_form_processor_options_enabled]"]' => array('checked' => true),
+      ),
+    ),
+  );
+  $form['extra']['cmrf_form_processor_options_params'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Additional parameters for retrieving the option list'),
+    '#description' => t('If you have a conditional option list, enter the parameters for that list here. Enter it in json and you could use tokens.').theme('webform_token_help'),
+    '#default_value' => $option_field_params,
     '#states' => array(
       'visible' => array(
         'input[name="extra[cmrf_form_processor_options_enabled]"]' => array('checked' => true),
@@ -168,7 +183,11 @@ function cmrf_form_processor_webform_component_render_alter(&$element, $componen
   $form_processor = $node->cmrf_form_processor_processor;
   $enabled = isset($component['extra']['cmrf_form_processor_options_enabled']) && $component['extra']['cmrf_form_processor_options_enabled'] ? true : false;
   if ($enabled && isset($component['extra']['cmrf_form_processor_options'])) {
-    $available_fields = cmrf_form_processor_get_fields($form_processor, $profile);
+    $additional_params = array();
+    if (isset($component['extra']['cmrf_form_processor_options_params'])) {
+      $additional_params = json_decode(token_replace($component['extra']['cmrf_form_processor_options_params']), true);
+    }
+    $available_fields = cmrf_form_processor_get_fields($form_processor, $profile, $additional_params);
     $option_field = $component['extra']['cmrf_form_processor_options'];
     if (isset($available_fields[$option_field]) && isset($available_fields[$option_field]['options']) && is_array($available_fields[$option_field]['options'])) {
       $element['#options'] = $available_fields[$option_field]['options'];
@@ -203,6 +222,11 @@ function cmrf_form_processor_form_webform_components_form_alter(&$form, &$form_s
     foreach($node->webform['components'] as $comp) {
       if (isset($fields[$comp['form_key']])) {
         unset($fields[$comp['form_key']]);
+      }
+    }
+    foreach($fields as $fieldName => $field) {
+      if (isset($field['api.required']) && !$field['api.required']) {
+        unset($fields[$fieldName]);
       }
     }
     $missing_fields = array_keys($fields);
