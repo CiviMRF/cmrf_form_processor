@@ -77,6 +77,7 @@ function cmrf_form_processor_get_default_fields($form_processor, $profile=null) 
 
 function cmrf_form_processor_get_default_data($form_processor, $params, $cache='1 minute', $profile=null) {
   $data = array();
+  $options = array();
   if (!empty($cache)) {
     $options['cache'] = $cache;
   }
