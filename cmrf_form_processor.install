@@ -41,6 +41,13 @@ function cmrf_form_processor_schema() {
           'default' => 0,
           'description' => 'Submit in background',
         ),
+        'cmrf_form_processor_clear_submission' => array(
+          'type' => 'int',
+          'size' => 'tiny',
+          'not null' => TRUE,
+          'default' => 0,
+          'description' => 'Clears the submission',
+        ),
         'cmrf_form_processor_profile' => array(
           'description' => 'The profile',
           'type' => 'varchar',
@@ -74,5 +81,23 @@ function cmrf_form_processor_schema() {
       ),
       'primary key' => array('nid'),
     ),
+  );
+}
+
+/**
+ * Add functionality to clear webform submissions.
+ *
+ */
+function cmrf_form_processor_update_7001() {
+  db_add_field(
+    'cmrf_form_processor_webforms',
+    'cmrf_form_processor_clear_submission',
+    array(
+      'type' => 'int',
+      'size' => 'tiny',
+      'not null' => TRUE,
+      'default' => 0,
+      'description' => 'Clears the submission',
+    )
   );
 }

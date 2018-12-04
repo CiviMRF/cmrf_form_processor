@@ -2,6 +2,12 @@
 
 require_once('cmrf_form_processor.cmrf.inc');
 
+/**
+ * @var array
+ *   Holds the original submission objects as soon as a submission is updated.
+ */
+$cmrf_form_processor_submissions_updated = array();
+
 function cmrf_form_processor_form_alter(&$form, &$form_state, $form_id) {
   if (stripos($form_id, 'webform_client_form_')!==0) {
     // Is not a webform;
@@ -30,7 +36,7 @@ function cmrf_form_processor_form_alter(&$form, &$form_state, $form_id) {
     }
   }
   _cmrf_form_processor_form_alter_walk_submitted_tree($form['submitted'], $defaultData);
-} 
+}
 
 /**
  * Recursive function to prefill the default data onto the webform.
@@ -46,7 +52,57 @@ function _cmrf_form_processor_form_alter_walk_submitted_tree(&$tree, $defaultDat
   }
 }
 
+/**
+ * Implements hook_webform_submission_presave().
+ */
+function cmrf_form_processor_webform_submission_presave($node, &$submission) {
+  global $cmrf_form_processor_submissions_updated;
+  if ($submission->is_draft) {
+    return;
+  }
+  // Only submit webforms when civimrf is enabled.
+  if (!$node->cmrf_form_processor_enable) {
+    return;
+  }
+  $original_submissions = webform_get_submissions(array('nid' => $submission->nid, 'sid' => $submission->sid));
+  if (isset($original_submissions[$submission->sid])) {
+    $cmrf_form_processor_submissions_updated[$submission->sid] = $original_submissions[$submission->sid];
+  }
+
+}
+
+/**
+ * Implements hook_webform_submission_update().
+ */
+function cmrf_form_processor_webform_submission_update($node, $submission) {
+  global $cmrf_form_processor_submissions_updated;
+  if ($submission->is_draft) {
+    return;
+  }
+  // Only submit webforms when civimrf is enabled.
+  if (!$node->cmrf_form_processor_enable) {
+    return;
+  }
+  $sid = $submission->sid;
+  if (!isset($cmrf_form_processor_submissions_updated[$sid])) {
+    return;
+  }
+  if ($cmrf_form_processor_submissions_updated[$sid]->is_draft && !$submission->is_draft) {
+    cmrf_form_processor_submit($node, $submission);
+  }
+}
+
 function cmrf_form_processor_webform_submission_insert($node, $submission) {
+  cmrf_form_processor_submit($node, $submission);
+}
+
+/**
+ * Helper function to submit data
+ *
+ * @param $node
+ * @param $submission
+ */
+function cmrf_form_processor_submit($node, $submission) {
   // Do not pass draft webforms.
   if ($submission->is_draft) {
     return;
@@ -72,13 +128,20 @@ function cmrf_form_processor_webform_submission_insert($node, $submission) {
       $params[$component['form_key']] = $value;
     }
   }
-
-  $options = array();
+  drupal_alter('cmrf_form_processor_submit_params', $params, $node, $submission);
+  $options = array(
+    'nid' => $submission->nid,
+    'sid' => $submission->sid,
+  );
+  $callbacks = array();
+  if ($node->cmrf_form_processor_clear_submission) {
+    $callbacks[] = 'cmrf_webform_clear_submission';
+  }
 
   if ($node->cmrf_form_processor_queue) {
-    cmrf_webform_queue_call('FormProcessor', $node->cmrf_form_processor_processor, $params, $options, $profile);
+    cmrf_webform_queue_call('FormProcessor', $node->cmrf_form_processor_processor, $params, $options, $profile, $callbacks);
   } else {
-    cmrf_webform_send_call('FormProcessor', $node->cmrf_form_processor_processor, $params, $options, $profile);
+    cmrf_webform_send_call('FormProcessor', $node->cmrf_form_processor_processor, $params, $options, $profile, $callbacks);
   }
 }
 
@@ -251,6 +314,7 @@ function cmrf_form_processor_form_cmrf_webform_settings_alter(&$form, &$form_sta
   $node = $form['#node'];
   $enabled = isset($node->cmrf_form_processor_enable) && $node->cmrf_form_processor_enable ? TRUE : FALSE;
   $queue = isset($node->cmrf_form_processor_queue) && $node->cmrf_form_processor_queue ? TRUE : FALSE;
+  $clear_submission = isset($node->cmrf_form_processor_clear_submission) ? $node->cmrf_form_processor_clear_submission : TRUE;
   $profile = isset($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : '';
   $processor = isset($node->cmrf_form_processor_processor) ? $node->cmrf_form_processor_processor : '';
   $defaultData = isset($node->cmrf_form_processor_default_data) ? $node->cmrf_form_processor_default_data : array();
@@ -271,6 +335,17 @@ function cmrf_form_processor_form_cmrf_webform_settings_alter(&$form, &$form_sta
     '#title' => t('Handle the submission in the background'),
     '#description' => t('Submit this webform in the background. This means that the user does not have to wait till the submission is processed. You have to enable the cron to get this working.'),
     '#default_value' => $queue,
+    '#states' => array(
+      'visible' => array(
+        'select[name="cmrf_enable"]' => array('value' => 'cmrf_form_processor'),
+      ),
+    ),
+  );
+  $form['cmrf_form_processor']['cmrf_form_processor_clear_submission'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Delete the submission after processing.'),
+    '#description' => t('Deletes the submission form the webform results after the data has been submitted to CiviCRM.'),
+    '#default_value' => $clear_submission,
     '#states' => array(
       'visible' => array(
         'select[name="cmrf_enable"]' => array('value' => 'cmrf_form_processor'),
@@ -450,6 +525,7 @@ function cmrf_form_processor_settings_submit(array &$form, array &$form_state) {
   $node = &$form['#node'];
   $node->cmrf_form_processor_enable = $form_state['values']['cmrf_enable'] == 'cmrf_form_processor' ? TRUE : FALSE;  
   $node->cmrf_form_processor_queue = $form_state['values']['cmrf_form_processor_queue'] ? TRUE : FALSE;
+  $node->cmrf_form_processor_clear_submission = $form_state['values']['cmrf_form_processor_clear_submission'] ? TRUE : FALSE;
   $node->cmrf_form_processor_profile = $form_state['values']['cmrf_form_processor_profile'] ? $form_state['values']['cmrf_form_processor_profile'] : '';
   $node->cmrf_form_processor_processor = $form_state['values']['cmrf_form_processor_processor'] ? $form_state['values']['cmrf_form_processor_processor'] : '';
   $node->cmrf_form_processor_default_data_cache = isset($form_state['values']['cmrf_form_processor_default_data_cache']) ? $form_state['values']['cmrf_form_processor_default_data_cache'] : '';
@@ -484,6 +560,7 @@ function cmrf_form_processor_node_load($nodes, $types) {
     $node = &$nodes[$cmrf_webform->nid];
     $node->cmrf_form_processor_enable = $cmrf_webform->cmrf_form_processor_enable ? TRUE : FALSE;
     $node->cmrf_form_processor_queue = $cmrf_webform->cmrf_form_processor_queue ? TRUE : FALSE;
+    $node->cmrf_form_processor_clear_submission = $cmrf_webform->cmrf_form_processor_clear_submission ? TRUE : FALSE;
     $node->cmrf_form_processor_profile = $cmrf_webform->cmrf_form_processor_profile ? $cmrf_webform->cmrf_form_processor_profile : '';
     $node->cmrf_form_processor_processor = $cmrf_webform->cmrf_form_processor_processor ? $cmrf_webform->cmrf_form_processor_processor : '';
     $node->cmrf_form_processor_default_data_enable = $cmrf_webform->cmrf_form_processor_default_data_enable ? TRUE : FALSE;
@@ -501,6 +578,7 @@ function cmrf_form_processor_node_insert($node) {
       'nid' => $node->nid,
       'cmrf_form_processor_enable' => !empty($node->cmrf_form_processor_enable) ? 1 : 0,
       'cmrf_form_processor_queue' => !empty($node->cmrf_form_processor_queue) ? 1 : 0,
+      'cmrf_form_processor_clear_submission' => !empty($node->cmrf_form_processor_clear_submission) ? 1: 0,
       'cmrf_form_processor_profile' => !empty($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : '',
       'cmrf_form_processor_processor' => !empty($node->cmrf_form_processor_processor) ? $node->cmrf_form_processor_processor : '',
       'cmrf_form_processor_default_data_enable' => !empty($node->cmrf_form_processor_default_data_enable) ? 1 : 0,
@@ -521,6 +599,7 @@ function cmrf_form_processor_node_update($node) {
     ->fields(array(
       'cmrf_form_processor_enable' => !empty($node->cmrf_form_processor_enable) ? 1 : 0,
       'cmrf_form_processor_queue' => !empty($node->cmrf_form_processor_queue) ? 1 : 0,
+      'cmrf_form_processor_clear_submission' => !empty($node->cmrf_form_processor_clear_submission) ? 1: 0,
       'cmrf_form_processor_profile' => !empty($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : '',
       'cmrf_form_processor_processor' => !empty($node->cmrf_form_processor_processor) ? $node->cmrf_form_processor_processor : '',
       'cmrf_form_processor_default_data_enable' => !empty($node->cmrf_form_processor_default_data_enable) ? 1 : 0,
