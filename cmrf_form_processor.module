@@ -287,6 +287,7 @@ function cmrf_form_processor_form_webform_components_form_alter(&$form, &$form_s
         unset($fields[$comp['form_key']]);
       }
     }
+    drupal_alter('cmrf_form_processor_missing_fields', $fields, $node);
     foreach($fields as $fieldName => $field) {
       if (isset($field['api.required']) && !$field['api.required']) {
         unset($fields[$fieldName]);
