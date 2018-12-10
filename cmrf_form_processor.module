@@ -272,6 +272,39 @@ function cmrf_form_processor_form_webform_components_form_alter(&$form, &$form_s
   return $form;
 }
 
+/**
+ * implements hook_webform_component_render_alter().
+ *
+ * Add the options from the form processor option list when the administrator
+ * has selected to use an option list from the form processor.
+ */
+function cmrf_form_processor_webform_component_render_alter(&$element, $component) {
+  if ($component['type'] != 'select') {
+    return;
+  }
+  $node = node_load($component['nid']);
+  if (!$node->cmrf_form_processor_enable) {
+    return;
+  }
+  if ($component)
+
+    $profile = !empty($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : null;
+  $form_processor = $node->cmrf_form_processor_processor;
+  $enabled = isset($component['extra']['cmrf_form_processor_options_enabled']) && $component['extra']['cmrf_form_processor_options_enabled'] ? true : false;
+  if ($enabled && isset($component['extra']['cmrf_form_processor_options'])) {
+    $additional_params = array();
+    if (isset($component['extra']['cmrf_form_processor_options_params'])) {
+      $additional_params = json_decode(token_replace($component['extra']['cmrf_form_processor_options_params']), true);
+    }
+    $available_fields = cmrf_form_processor_get_fields($form_processor, $profile, $additional_params);
+    $option_field = $component['extra']['cmrf_form_processor_options'];
+    if (isset($available_fields[$option_field]) && isset($available_fields[$option_field]['options']) && is_array($available_fields[$option_field]['options'])) {
+      $element['#options'] = $available_fields[$option_field]['options'];
+      $element['#access'] = TRUE;
+    }
+  }
+}
+
 function cmrf_form_processor_form_cmrf_webform_settings_alter(&$form, &$form_state) {
   $profiles = cmrf_core_list_profiles();
   $profiles_options = array('' => t(' - Default profile -'));
