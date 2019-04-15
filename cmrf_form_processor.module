@@ -125,8 +125,8 @@ function cmrf_form_processor_submit($node, $submission) {
       if (is_array($value) && empty($component['extra']['multiple'])) {
         $value = reset($value);
       } elseif (is_array($value) && !empty($component['extra']['multiple'])) {
+        $value = array();
         foreach($data[$index] as $k=>$v) {
-          $value = array();
           if (!empty($v)) {
             $value[] = $v;
           }
