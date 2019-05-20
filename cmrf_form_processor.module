@@ -133,6 +133,12 @@ function cmrf_form_processor_submit($node, $submission) {
         }
       }
       $params[$component['form_key']] = $value;
+      if ($component['type'] == 'file' && $value) {
+        $file = file_load($value);
+        $params[$component['form_key'].'_file_name'] = $file->filename;
+        $params[$component['form_key'].'_mime_type'] = $file->filemime;
+        $params[$component['form_key'].'_content'] = base64_encode(file_get_contents(file_create_url($file->uri)));
+      }
     }
   }
   drupal_alter('cmrf_form_processor_submit_params', $params, $node, $submission);
