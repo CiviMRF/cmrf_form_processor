@@ -27,7 +27,7 @@ function cmrf_form_processor_menu() {
  * It is not needed to keep them.
  */
 function cmrf_form_processor_cron() {
-  db_query("DELETE FROM {file_usage} WHERE `module` = 'cmrf_form_processor' AND `type` = 'cmrfformprocessor'")
+  db_query("DELETE FROM {file_usage} WHERE `module` = 'cmrf_form_processor' AND `type` = 'cmrfformprocessor'");
   db_query("DELETE FROM {file_managed} WHERE `uri` LIKE 'cmrfformprocessor://%'");
 }
 
