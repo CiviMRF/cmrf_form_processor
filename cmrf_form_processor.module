@@ -1,12 +1,47 @@
 <?php
 
 require_once('cmrf_form_processor.cmrf.inc');
+require_once('cmrf_form_processor_stream_wrapper.inc');
 
 /**
  * @var array
  *   Holds the original submission objects as soon as a submission is updated.
  */
 $cmrf_form_processor_submissions_updated = array();
+
+function cmrf_form_processor_menu() {
+  $items['system/cmrfformprocessor/files'] = array(
+    'title' => 'File download',
+    'page callback' => 'file_download',
+    'page arguments' => array('cmrfformprocessor'),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_cron().
+ *
+ * Remove all CiviCRM managed files from the system.
+ * It is not needed to keep them.
+ */
+function cmrf_form_processor_cron() {
+  db_query("DELETE FROM {file_usage} WHERE `module` = 'cmrf_form_processor' AND `type` = 'cmrfformprocessor'")
+  db_query("DELETE FROM {file_managed} WHERE `uri` LIKE 'cmrfformprocessor://%'");
+}
+
+/**
+ * Implements hook_stream_wrappers().
+ */
+function cmrf_form_processor_stream_wrappers() {
+  $info['cmrfformprocessor'] = array(
+    'name' => t('CiviMRF Form Processor File Url'),
+    'class' => 'cmrf_form_processor_stream_wrapper',
+    'description' => t('Remote files from CiviMRF Form Processor.'),
+  );
+  return $info;
+}
 
 function cmrf_form_processor_form_alter(&$form, &$form_state, $form_id) {
   if (stripos($form_id, 'webform_client_form_')!==0) {
@@ -19,7 +54,7 @@ function cmrf_form_processor_form_alter(&$form, &$form_state, $form_id) {
   }
   if (!$node->cmrf_form_processor_default_data_enable) {
     return;
-  } 
+  }
   
   $profile = !empty($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : null;
   $cache = $node->cmrf_form_processor_default_data_cache;
@@ -31,6 +66,10 @@ function cmrf_form_processor_form_alter(&$form, &$form_state, $form_id) {
   } 
   $defaultData = cmrf_form_processor_get_default_data($node->cmrf_form_processor_processor, $defaultDataParams, $cache, $profile);
   foreach($node->webform['components'] as $cid => $component) {
+    if ($component['type'] == 'file' && isset($defaultData[$component['form_key']]) && $defaultData[$component['form_key']]) {
+      $file = cmrf_form_processor_stream_wrapper::getAsManaged($defaultData[$component['form_key']], $cache);
+      $defaultData[$component['form_key']] = $file->fid;
+    }
     if (isset($defaultData[$component['form_key']])) {
       $node->webform['components'][$cid]['value'] = $defaultData[$component['form_key']];
     }
@@ -135,9 +174,15 @@ function cmrf_form_processor_submit($node, $submission) {
       $params[$component['form_key']] = $value;
       if ($component['type'] == 'file' && $value) {
         $file = file_load($value);
-        $params[$component['form_key'].'_file_name'] = $file->filename;
-        $params[$component['form_key'].'_mime_type'] = $file->filemime;
-        $params[$component['form_key'].'_content'] = base64_encode(file_get_contents(file_create_url($file->uri)));
+        $fileData = array();
+        if (stripos($file->uri, 'cmrfformprocessor://') === 0) {
+          $fileData['id'] = cmrf_form_processor_stream_wrapper::getFileIdFromUri($file->uri);
+        } else {
+          $fileData['name'] = $file->filename;
+          $fileData['mime_type'] = $file->filemime;
+          $fileData['content'] = base64_encode(file_get_contents(file_create_url($file->uri)));
+        }
+        $params[$component['form_key']] = $fileData;
       }
     }
   }
