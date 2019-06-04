@@ -63,6 +63,24 @@ function cmrf_form_processor_get_fields($form_processor, $profile=null, $additio
   return $fields;
 }
 
+function cmrf_form_processor_get_options($form_processor, $field_name, $profile=null, $additional_params=array()) {
+  if (!is_array($additional_params)) {
+    $additional_params = array();
+  }
+  $parameters = $additional_params + array('api_action' => $form_processor, 'field' => $field_name);
+  $options = array();
+  if (empty($additional_params)) {
+    $options['cache'] = '180 minutes';
+  }
+
+  $call = cmrf_form_processor_send_call('FormProcessor', 'getoptions', $parameters, $options, $profile);
+  $result = $call->getReply();
+  if (isset($result['values'])) {
+    return $result['values'];
+  }
+  return array();
+}
+
 function cmrf_form_processor_get_default_fields($form_processor, $profile=null) {
   $fields = array();  
   $parameters = array('api_action' => $form_processor);
