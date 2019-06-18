@@ -9,6 +9,8 @@ require_once('cmrf_form_processor_stream_wrapper.inc');
  */
 $cmrf_form_processor_submissions_updated = array();
 
+$cmrf_form_processor_latest_result = false;
+
 function cmrf_form_processor_menu() {
   $items['system/cmrfformprocessor/files'] = array(
     'title' => 'File download',
@@ -199,8 +201,56 @@ function cmrf_form_processor_submit($node, $submission) {
   if ($node->cmrf_form_processor_queue) {
     cmrf_webform_queue_call('FormProcessor', $node->cmrf_form_processor_processor, $params, $options, $profile, $callbacks);
   } else {
-    cmrf_webform_send_call('FormProcessor', $node->cmrf_form_processor_processor, $params, $options, $profile, $callbacks);
+    global $cmrf_form_processor_latest_result;
+    $call = cmrf_webform_send_call('FormProcessor', $node->cmrf_form_processor_processor, $params, $options, $profile, $callbacks);
+    $cmrf_form_processor_latest_result = $call->getReply();
   }
+}
+
+function cmrf_form_processor_token_info() {
+  $types = array(
+    'name' => t('Form Processor Result'),
+    'description' => t('Result data from a form processor call'),
+  );
+  $tokens['action'] = array(
+    'name' => t("Action"),
+    'dynamic' => true,
+    'description' => t("Action output of a form processor."),
+  );
+  return array(
+    'types' => array(
+      'form_processor' => $types
+    ),
+    'tokens' => array(
+      'form_processor' => $tokens
+    )
+  );
+}
+
+function cmrf_form_processor_tokens($type, $tokens, array $data = array(), array $options = array()) {
+  global $cmrf_form_processor_latest_result;
+  $replacements = array();
+  if ($type == 'form_processor') {
+    foreach($tokens as $token => $original) {
+      $elements = explode(":", $token);
+      $key = array_shift($elements);
+      if ($cmrf_form_processor_latest_result && isset($cmrf_form_processor_latest_result[$key])) {
+        $value = _cmrf_form_processor_value_from_result($elements, $cmrf_form_processor_latest_result[$key]);
+        $replacements[$original] = $value;
+      }
+    }
+  }
+  return $replacements;
+}
+
+function _cmrf_form_processor_value_from_result($elements, $data) {
+  $key = array_shift($elements);
+  if (isset($data[$key]) && is_array($data[$key])) {
+    return _cmrf_form_processor_value_from_result($elements, $data[$key]);
+  } elseif (isset($data[$key]) && !is_array($data[$key])) {
+    return $data[$key];
+  }
+  return null;
 }
 
 /**
