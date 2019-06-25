@@ -72,7 +72,7 @@ function cmrf_form_processor_form_alter(&$form, &$form_state, $form_id) {
       $file = cmrf_form_processor_stream_wrapper::getAsManaged($defaultData[$component['form_key']], $cache);
       $defaultData[$component['form_key']] = $file->fid;
     }
-    if ($component['type'] == 'select' && isset($defaultData[$component['form_key']]) && !is_array($defaultData[$component['form_key']])) {
+    if ($component['type'] == 'select' && $component['extra']['multiple'] && isset($defaultData[$component['form_key']]) && !is_array($defaultData[$component['form_key']])) {
       $defaultData[$component['form_key']] = array($defaultData[$component['form_key']]);
     }
     if (isset($defaultData[$component['form_key']])) {
