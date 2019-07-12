@@ -421,7 +421,7 @@ function cmrf_form_processor_webform_component_render_alter(&$element, $componen
       $available_options = cmrf_form_processor_get_options($form_processor, $option_field, $profile, $additional_params);
     }
 
-    if ($available_options && is_array($available_options)) {
+    if (is_array($available_options)) {
       $element['#options'] = $available_options;
       $element['#access'] = TRUE;
     }
