@@ -533,6 +533,7 @@ function cmrf_form_processor_form_cmrf_webform_settings_alter(&$form, &$form_sta
   $form['cmrf_form_processor_default']['cmrf_form_processor_default_data_enable'] = array(
     '#type' => 'checkbox',
     '#title' => t('Prefill the form with existing data'),
+    '#description' => t('When enabled you will be given options on how to retrieve the data.'),
     '#default_value' => $defaultDataEnabled,
   );
   $form['cmrf_form_processor_default']['cmrf_form_processor_default_data'] = array(
