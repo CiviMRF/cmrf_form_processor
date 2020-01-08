@@ -34,7 +34,7 @@ function cmrf_form_processor_queue_call($entity, $action, $parameters, $options,
 }
 
 function cmrf_form_processor_get_processor_list($profile=null) {
-  $processors = array();  
+  $processors = array();
   $parameters = array();
   $options['cache'] = '180 minutes';
   $call = cmrf_form_processor_send_call('FormProcessorInstance', 'list', $parameters, $options, $profile);
@@ -82,7 +82,7 @@ function cmrf_form_processor_get_options($form_processor, $field_name, $profile=
 }
 
 function cmrf_form_processor_get_default_fields($form_processor, $profile=null) {
-  $fields = array();  
+  $fields = array();
   $parameters = array('api_action' => $form_processor);
   $options['cache'] = '180 minutes';
   $call = cmrf_form_processor_send_call('FormProcessorDefaults', 'getfields', $parameters, $options, $profile);
@@ -101,6 +101,13 @@ function cmrf_form_processor_get_default_data($form_processor, $params, $cache='
   }
   $call = cmrf_form_processor_send_call('FormProcessorDefaults', $form_processor, $params, $options, $profile);
   $result = $call->getReply();
+  if ($call->getStatus() == \CMRF\Core\Call::STATUS_FAILED) {
+    if (isset($result['error_message'])) {
+      throw new \Exception(t('Something went wrong with retrieving default values for the form. Return error message is: @error', ['@error' => $result['error_message']]));
+    } else {
+      throw new \Exception(t('Something went wrong with retrieving default values for the form. No error message has been returned.'));
+    }
+  }
   foreach($result as $name => $value) {
     if ($name == 'is_error') {
       continue;
