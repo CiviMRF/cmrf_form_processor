@@ -185,7 +185,7 @@ function cmrf_form_processor_submit($node, $submission) {
         } else {
           $fileData['name'] = $file->filename;
           $fileData['mime_type'] = $file->filemime;
-          $fileData['content'] = base64_encode(file_get_contents(file_create_url($file->uri)));
+          $fileData['url'] = file_create_url($file->uri);
         }
         $params[$component['form_key']] = $fileData;
       }
