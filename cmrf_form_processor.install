@@ -67,6 +67,20 @@ function cmrf_form_processor_schema() {
           'default' => 0,
           'description' => 'Enable default data retrieval for this form',
         ),
+        'cmrf_form_processor_default_data_required' => array(
+          'type' => 'int',
+          'size' => 'tiny',
+          'not null' => TRUE,
+          'default' => 0,
+          'description' => 'Require default data retrieval for this form',
+        ),
+        'cmrf_form_processor_default_data_required_message' => array(
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+          'default' => 0,
+          'description' => 'Message when default data is missing.',
+        ),
         'cmrf_form_processor_default_data_cache' => array(
           'description' => 'Cache time for the default data retrieval',
           'type' => 'varchar',
@@ -98,6 +112,35 @@ function cmrf_form_processor_update_7001() {
       'not null' => TRUE,
       'default' => 0,
       'description' => 'Clears the submission',
+    )
+  );
+}
+
+/**
+ * Add functionality to require default data
+ *
+ */
+function cmrf_form_processor_update_7002() {
+  db_add_field(
+    'cmrf_form_processor_webforms',
+    'cmrf_form_processor_default_data_required',
+    array(
+      'type' => 'int',
+      'size' => 'tiny',
+      'not null' => TRUE,
+      'default' => 0,
+      'description' => 'Require default data retrieval for this form',
+    )
+  );
+  db_add_field(
+    'cmrf_form_processor_webforms',
+    'cmrf_form_processor_default_data_required_message',
+    array(
+      'type' => 'varchar',
+      'length' => 255,
+      'not null' => TRUE,
+      'default' => 0,
+      'description' => 'Message when default data is missing.',
     )
   );
 }

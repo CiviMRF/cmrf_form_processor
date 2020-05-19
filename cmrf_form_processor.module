@@ -67,6 +67,20 @@ function cmrf_form_processor_form_alter(&$form, &$form_state, $form_id) {
     }
   }
   $defaultData = cmrf_form_processor_get_default_data($node->cmrf_form_processor_processor, $defaultDataParams, $cache, $profile);
+  if ($node->cmrf_form_processor_default_data_required && empty($defaultData)) {
+    $message = t('Invalid form');
+    if ($node->cmrf_form_processor_default_data_required_message) {
+      $message = $node->cmrf_form_processor_default_data_required_message;
+    }
+    drupal_set_message($message, 'error');
+    // Below an uggly hack.
+    // We clear the form array
+    // so basically the form is empty now and only the error is shown.
+    // We do this because there is no data coming from CiviCRM so basically the form
+    // is invalid.
+    $form = []; // Clear the form show the form becomes invisible.
+    return;
+  }
   foreach($node->webform['components'] as $cid => $component) {
     if ($component['type'] == 'file' && isset($defaultData[$component['form_key']]) && $defaultData[$component['form_key']]) {
       $file = cmrf_form_processor_stream_wrapper::getAsManaged($defaultData[$component['form_key']], $cache);
@@ -212,13 +226,18 @@ function cmrf_form_processor_submit($node, $submission) {
 
 function cmrf_form_processor_token_info() {
   $types = array(
-    'name' => t('Form Processor Result'),
+    'name' => t('Form Processor'),
     'description' => t('Result data from a form processor call'),
   );
   $tokens['action'] = array(
     'name' => t("Action"),
     'dynamic' => true,
-    'description' => t("Action output of a form processor."),
+    'description' => t("Action output of a form processor submission."),
+  );
+  $tokens['default'] = array(
+    'name' => t("Default Data"),
+    'dynamic' => true,
+    'description' => t("Default Data of a form processor."),
   );
   return array(
     'types' => array(
@@ -232,14 +251,23 @@ function cmrf_form_processor_token_info() {
 
 function cmrf_form_processor_tokens($type, $tokens, array $data = array(), array $options = array()) {
   global $cmrf_form_processor_latest_result;
+  global $cmrf_form_processor_latest_default_data;
   $replacements = array();
   if ($type == 'form_processor') {
     foreach($tokens as $token => $original) {
+      // Token is action:contact.id or default.name
       $elements = explode(":", $token);
       $key = array_shift($elements);
-      if ($cmrf_form_processor_latest_result && isset($cmrf_form_processor_latest_result[$key])) {
-        $value = _cmrf_form_processor_value_from_result($elements, $cmrf_form_processor_latest_result[$key]);
-        $replacements[$original] = $value;
+      if ($key == 'default') {
+        $key = array_shift($elements);
+        if ($cmrf_form_processor_latest_default_data && isset($cmrf_form_processor_latest_default_data[$key])) {
+          $replacements[$original] = $cmrf_form_processor_latest_default_data[$key];
+        }
+      } else {
+        if ($cmrf_form_processor_latest_result && isset($cmrf_form_processor_latest_result[$key])) {
+          $value = _cmrf_form_processor_value_from_result($elements, $cmrf_form_processor_latest_result[$key]);
+          $replacements[$original] = $value;
+        }
       }
     }
   }
@@ -444,6 +472,8 @@ function cmrf_form_processor_form_cmrf_webform_settings_alter(&$form, &$form_sta
   $processor = isset($node->cmrf_form_processor_processor) ? $node->cmrf_form_processor_processor : '';
   $defaultData = isset($node->cmrf_form_processor_default_data) ? $node->cmrf_form_processor_default_data : array();
   $defaultDataEnabled = isset($node->cmrf_form_processor_default_data_enable) && $node->cmrf_form_processor_default_data_enable ? TRUE : FALSE;
+  $defaultDataRequired = isset($node->cmrf_form_processor_default_data_required) && $node->cmrf_form_processor_default_data_required ? TRUE : FALSE;
+  $defaultDataRequiredMessage = isset($node->cmrf_form_processor_default_data_required_message) ? $node->cmrf_form_processor_default_data_required_message : t('Invalid link');
   $defaultDataCache = isset($node->cmrf_form_processor_default_data_cache) ? $node->cmrf_form_processor_default_data_cache : '3 minutes';
 
   $submitted_profile = !empty($form_state['values']['cmrf_form_processor_profile']) ? $form_state['values']['cmrf_form_processor_profile'] : $profile;
@@ -535,6 +565,27 @@ function cmrf_form_processor_form_cmrf_webform_settings_alter(&$form, &$form_sta
     '#title' => t('Prefill the form with existing data'),
     '#description' => t('When enabled you will be given options on how to retrieve the data.'),
     '#default_value' => $defaultDataEnabled,
+  );
+  $form['cmrf_form_processor_default']['cmrf_form_processor_default_data_required'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Default data is required'),
+    '#description' => t('If checked the form is only visible when default data is succesfully loaded'),
+    '#default_value' => $defaultDataRequired,
+    '#states' => array(
+      'visible' => array(
+        'input[name="cmrf_form_processor_default_data_enable"]' => array('checked' => true),
+      ),
+    ),
+  );
+  $form['cmrf_form_processor_default']['cmrf_form_processor_default_data_required_message'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Message when CiviCRM does not return any data'),
+    '#default_value' => $defaultDataRequiredMessage,
+    '#states' => array(
+      'visible' => array(
+        'input[name="cmrf_form_processor_default_data_required"]' => array('checked' => true),
+      ),
+    ),
   );
   $form['cmrf_form_processor_default']['cmrf_form_processor_default_data'] = array(
     '#tree' => TRUE,
@@ -660,6 +711,8 @@ function cmrf_form_processor_settings_submit(array &$form, array &$form_state) {
   $node->cmrf_form_processor_processor = $form_state['values']['cmrf_form_processor_processor'] ? $form_state['values']['cmrf_form_processor_processor'] : '';
   $node->cmrf_form_processor_default_data_cache = isset($form_state['values']['cmrf_form_processor_default_data_cache']) ? $form_state['values']['cmrf_form_processor_default_data_cache'] : '';
   $node->cmrf_form_processor_default_data_enable = isset($form_state['values']['cmrf_form_processor_default_data_enable']) && $form_state['values']['cmrf_form_processor_default_data_enable'] ? true : false;
+  $node->cmrf_form_processor_default_data_required = isset($form_state['values']['cmrf_form_processor_default_data_required']) && $form_state['values']['cmrf_form_processor_default_data_required'] ? true : false;
+  $node->cmrf_form_processor_default_data_required_message = isset($form_state['values']['cmrf_form_processor_default_data_required_message']) ? $form_state['values']['cmrf_form_processor_default_data_required_message'] : '';
 
   $node->cmrf_form_processor_default_data = array();
   if (isset($form_state['input']['cmrf_form_processor_default_data'])) {
@@ -694,6 +747,8 @@ function cmrf_form_processor_node_load($nodes, $types) {
     $node->cmrf_form_processor_profile = $cmrf_webform->cmrf_form_processor_profile ? $cmrf_webform->cmrf_form_processor_profile : '';
     $node->cmrf_form_processor_processor = $cmrf_webform->cmrf_form_processor_processor ? $cmrf_webform->cmrf_form_processor_processor : '';
     $node->cmrf_form_processor_default_data_enable = $cmrf_webform->cmrf_form_processor_default_data_enable ? TRUE : FALSE;
+    $node->cmrf_form_processor_default_data_required = $cmrf_webform->cmrf_form_processor_default_data_required ? TRUE : FALSE;
+    $node->cmrf_form_processor_default_data_required_message = $cmrf_webform->cmrf_form_processor_default_data_required_message;
     $node->cmrf_form_processor_default_data_cache = $cmrf_webform->cmrf_form_processor_default_data_cache;
     $node->cmrf_form_processor_default_data = !empty($cmrf_webform->cmrf_form_processor_default_data) ? json_decode($cmrf_webform->cmrf_form_processor_default_data, true) : array();
     if ($node->cmrf_form_processor_enable) {
@@ -729,6 +784,8 @@ function cmrf_form_processor_node_insert($node) {
       'cmrf_form_processor_profile' => !empty($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : '',
       'cmrf_form_processor_processor' => !empty($node->cmrf_form_processor_processor) ? $node->cmrf_form_processor_processor : '',
       'cmrf_form_processor_default_data_enable' => !empty($node->cmrf_form_processor_default_data_enable) ? 1 : 0,
+      'cmrf_form_processor_default_data_required' => !empty($node->cmrf_form_processor_default_data_required) ? 1 : 0,
+      'cmrf_form_processor_default_data_required_message' => $node->cmrf_form_processor_default_data_required_message ? $node->cmrf_form_processor_default_data_required_message : '',
       'cmrf_form_processor_default_data_cache' => !empty($node->cmrf_form_processor_default_data_cache) ? $node->cmrf_form_processor_default_data_cache : '',
       'cmrf_form_processor_default_data' => !empty($node->cmrf_form_processor_default_data) ? json_encode($node->cmrf_form_processor_default_data) : '',
     ))
@@ -750,6 +807,8 @@ function cmrf_form_processor_node_update($node) {
       'cmrf_form_processor_profile' => !empty($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : '',
       'cmrf_form_processor_processor' => !empty($node->cmrf_form_processor_processor) ? $node->cmrf_form_processor_processor : '',
       'cmrf_form_processor_default_data_enable' => !empty($node->cmrf_form_processor_default_data_enable) ? 1 : 0,
+      'cmrf_form_processor_default_data_required' => !empty($node->cmrf_form_processor_default_data_required) ? 1 : 0,
+      'cmrf_form_processor_default_data_required_message' => $node->cmrf_form_processor_default_data_required_message ? $node->cmrf_form_processor_default_data_required_message : '',
       'cmrf_form_processor_default_data_cache' => $node->cmrf_form_processor_default_data_cache ? $node->cmrf_form_processor_default_data_cache : '',
       'cmrf_form_processor_default_data' => !empty($node->cmrf_form_processor_default_data) ? json_encode($node->cmrf_form_processor_default_data) : '',
     ))

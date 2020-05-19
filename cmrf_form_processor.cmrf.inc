@@ -94,25 +94,22 @@ function cmrf_form_processor_get_default_fields($form_processor, $profile=null) 
 }
 
 function cmrf_form_processor_get_default_data($form_processor, $params, $cache='1 minute', $profile=null) {
-  $data = array();
+  global $cmrf_form_processor_latest_default_data;
+  $cmrf_form_processor_latest_default_data = array();
   $options = array();
   if (!empty($cache)) {
     $options['cache'] = $cache;
   }
   $call = cmrf_form_processor_send_call('FormProcessorDefaults', $form_processor, $params, $options, $profile);
-  $result = $call->getReply();
-  if ($call->getStatus() == \CMRF\Core\Call::STATUS_FAILED) {
-    if (isset($result['error_message'])) {
-      throw new \Exception(t('Something went wrong with retrieving default values for the form. Return error message is: @error', ['@error' => $result['error_message']]));
-    } else {
-      throw new \Exception(t('Something went wrong with retrieving default values for the form. No error message has been returned.'));
+  if ($call->getStatus() == \CMRF\Core\Call::STATUS_DONE) {
+    $result = $call->getReply();
+    foreach ($result as $name => $value) {
+      if ($name == 'is_error') {
+        continue;
+      }
+      $cmrf_form_processor_latest_default_data[$name] = $value;
     }
+    return $cmrf_form_processor_latest_default_data;
   }
-  foreach($result as $name => $value) {
-    if ($name == 'is_error') {
-      continue;
-    }
-    $data[$name] = $value;
-  }
-  return $data;
+  return false;
 }
