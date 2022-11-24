@@ -301,6 +301,7 @@ function cmrf_form_processor_form_webform_component_edit_form_alter(&$form, &$fo
   }
 
   $enabled = false;
+  $force_load = false;
   $option_field = null;
   $option_field_params = null;
   $cid = $form['cid']['#value'];
@@ -308,6 +309,7 @@ function cmrf_form_processor_form_webform_component_edit_form_alter(&$form, &$fo
     $component = isset($node->webform['components'][$cid]) ? $node->webform['components'][$cid] : FALSE;
     if ($component) {
       $enabled = isset($component['extra']['cmrf_form_processor_options_enabled']) && $component['extra']['cmrf_form_processor_options_enabled'] ? true : false;
+      $force_load = isset($component['extra']['cmrf_form_processor_options_force_load']) && $component['extra']['cmrf_form_processor_options_force_load'] ? true : false;
       if ($enabled && isset($component['extra']['cmrf_form_processor_options'])) {
         $option_field = $component['extra']['cmrf_form_processor_options'];
       }
@@ -331,7 +333,16 @@ function cmrf_form_processor_form_webform_component_edit_form_alter(&$form, &$fo
     '#type' => 'checkbox',
     '#title' => t('Load options from CiviMRF Form Processor'),
     '#default_value' => $enabled,
-
+  );
+  $form['extra']['cmrf_form_processor_options_force_load'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Force load options from CiviMRF Form Processor (Enable this when you have enabled the entity cache module)'),
+    '#default_value' => $force_load,
+    '#states' => array(
+      'visible' => array(
+        'input[name="extra[cmrf_form_processor_options_enabled]"]' => array('checked' => true),
+      ),
+    ),
   );
   $form['extra']['cmrf_form_processor_options'] = array(
     '#type' => 'select',
@@ -432,13 +443,14 @@ function cmrf_form_processor_webform_component_render_alter(&$element, $componen
   $profile = !empty($node->cmrf_form_processor_profile) ? $node->cmrf_form_processor_profile : NULL;
   $form_processor = $node->cmrf_form_processor_processor;
   $enabled = isset($component['extra']['cmrf_form_processor_options_enabled']) && $component['extra']['cmrf_form_processor_options_enabled'] ? TRUE : FALSE;
-  if (isset($element['#options'])) {
+  $force_load = isset($component['extra']['cmrf_form_processor_options_force_load']) && $component['extra']['cmrf_form_processor_options_force_load'] ? TRUE : FALSE;
+  if (isset($element['#options']) && !$force_load) {
     if (is_array($element['#options']) && count($element['#options'])) {
       $enabled = false;
     }
   }
   if ($enabled && isset($component['extra']['cmrf_form_processor_options'])) {
-    if (isset($component['extra']['cmrf_loaded_options']) && is_array($component['extra']['cmrf_loaded_options'])) {
+    if (isset($component['extra']['cmrf_loaded_options']) && is_array($component['extra']['cmrf_loaded_options']) && !$force_load) {
       $available_options = $component['extra']['cmrf_loaded_options'];
     } else {
       $additional_params = [];
@@ -756,15 +768,18 @@ function cmrf_form_processor_node_load($nodes, $types) {
       $form_processor = $node->cmrf_form_processor_processor;
       foreach($node->webform['components'] as $cid => $component) {
         if (isset($component['extra']['cmrf_form_processor_options_enabled']) && $component['extra']['cmrf_form_processor_options_enabled']) {
-          $additional_params = [];
-          if (isset($component['extra']['cmrf_form_processor_options_params'])) {
-            $additional_params = json_decode(token_replace($component['extra']['cmrf_form_processor_options_params']), TRUE);
-          }
+          $force_load = isset($component['extra']['cmrf_form_processor_options_force_load']) && $component['extra']['cmrf_form_processor_options_force_load'] ? true : false;
+          if (!$force_load) {
+            $additional_params = [];
+            if (isset($component['extra']['cmrf_form_processor_options_params'])) {
+              $additional_params = json_decode(token_replace($component['extra']['cmrf_form_processor_options_params']), TRUE);
+            }
 
-          $option_field = $component['extra']['cmrf_form_processor_options'];
-          $available_options = cmrf_form_processor_get_options($form_processor, $option_field, $profile, $additional_params);
-          $nodes[$cmrf_webform->nid]->webform['components'][$cid]['extra']['items'] = _webform_select_options_to_text($available_options);
-          $nodes[$cmrf_webform->nid]->webform['components'][$cid]['extra']['cmrf_loaded_options'] = $available_options;
+            $option_field = $component['extra']['cmrf_form_processor_options'];
+            $available_options = cmrf_form_processor_get_options($form_processor, $option_field, $profile, $additional_params);
+            $nodes[$cmrf_webform->nid]->webform['components'][$cid]['extra']['items'] = _webform_select_options_to_text($available_options);
+            $nodes[$cmrf_webform->nid]->webform['components'][$cid]['extra']['cmrf_loaded_options'] = $available_options;
+          }
         }
       }
     }

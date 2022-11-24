@@ -1,10 +1,10 @@
 name = CiviMRF Form Processor Webform integration
-description = Submit webforms with CiviMRF to CiviCRM Form Processor (https://lab.civicrm.org/extensions/form-procesor)  
+description = Submit webforms with CiviMRF to CiviCRM Form Processor (https://lab.civicrm.org/extensions/form-procesor)
 core = 7.x
 
 package = "CiviMRF"
 project = "cmrf_form_processor"
-version = "7.x-1.3"
+version = "7.x-1.4"
 
 dependencies[] = cmrf_core
 dependencies[] = cmrf_webform
