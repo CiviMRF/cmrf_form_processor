@@ -257,6 +257,7 @@ function cmrf_form_processor_tokens($type, $tokens, array $data = array(), array
     foreach($tokens as $token => $original) {
       // Token is action:contact.id or default.name
       $elements = explode(":", $token);
+      $keyV2 = implode(".", $elements);
       $key = array_shift($elements);
       if ($key == 'default') {
         $key = array_shift($elements);
@@ -267,6 +268,8 @@ function cmrf_form_processor_tokens($type, $tokens, array $data = array(), array
         if ($cmrf_form_processor_latest_result && isset($cmrf_form_processor_latest_result[$key])) {
           $value = _cmrf_form_processor_value_from_result($elements, $cmrf_form_processor_latest_result[$key]);
           $replacements[$original] = $value;
+        } elseif (cmrf_form_processor_latest_result && isset($cmrf_form_processor_latest_result[$keyV2])) {
+          $replacements[$original] = $cmrf_form_processor_latest_result[$keyV2];
         }
       }
     }
